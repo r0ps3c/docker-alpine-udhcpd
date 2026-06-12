@@ -1,0 +1,39 @@
+# Git files
+.git/
+.github/
+.gitignore
+
+# Documentation
+*.md
+!README.md
+LICENSE
+docs/
+
+# Tests (not needed in image)
+tests/
+Makefile
+
+# CI/CD files
+.dockerignore
+
+# Development files
+*.swp
+*.swo
+*~
+.DS_Store
+
+# Temporary files
+*.tmp
+tmp/
+temp/
+
+# Logs
+*.log
+
+# Secrets (defense in depth)
+*.key
+*.pem
+*.p12
+.env
+.env.*
+secrets/
