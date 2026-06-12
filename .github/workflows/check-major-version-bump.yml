@@ -1,0 +1,114 @@
+name: Check Major Version Bump
+
+on:
+  workflow_run:
+    workflows: ["Build and Tag"]
+    types:
+      - completed
+    branches:
+      - master
+
+jobs:
+  check-major-bump:
+    runs-on: ubuntu-latest
+    if: ${{ github.event.workflow_run.conclusion == 'success' }}
+    permissions:
+      contents: write
+      pull-requests: write
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
+
+      - name: Get master branch version
+        id: master-version
+        run: |
+          docker pull ghcr.io/${{ github.repository }}:main
+          MASTER_VERSION=$(docker run --rm --entrypoint sh ghcr.io/${{ github.repository }}:main -c \
+            "apk info busybox-extras 2>/dev/null | grep '^busybox-extras-[0-9]' | head -1 | sed 's/^busybox-extras-//' | sed 's/ .*//' | sed 's/-r[0-9]*\$//'")
+          MASTER_MAJOR=$(echo "$MASTER_VERSION" | cut -d. -f1)
+          echo "version=$MASTER_VERSION" >> $GITHUB_OUTPUT
+          echo "major=$MASTER_MAJOR" >> $GITHUB_OUTPUT
+          echo "Master version: $MASTER_VERSION (major: $MASTER_MAJOR)"
+
+      - name: Get stable branch version
+        id: stable-version
+        run: |
+          if docker pull ghcr.io/${{ github.repository }}:stable 2>/dev/null; then
+            STABLE_VERSION=$(docker run --rm --entrypoint sh ghcr.io/${{ github.repository }}:stable -c \
+              "apk info busybox-extras 2>/dev/null | grep '^busybox-extras-[0-9]' | head -1 | sed 's/^busybox-extras-//' | sed 's/ .*//' | sed 's/-r[0-9]*\$//'")
+            STABLE_MAJOR=$(echo "$STABLE_VERSION" | cut -d. -f1)
+            echo "version=$STABLE_VERSION" >> $GITHUB_OUTPUT
+            echo "major=$STABLE_MAJOR" >> $GITHUB_OUTPUT
+            echo "Stable version: $STABLE_VERSION (major: $STABLE_MAJOR)"
+          else
+            echo "version=" >> $GITHUB_OUTPUT
+            echo "major=" >> $GITHUB_OUTPUT
+            echo "No stable image found"
+          fi
+
+      - name: Check if major version differs
+        id: check-diff
+        run: |
+          MASTER_MAJOR="${{ steps.master-version.outputs.major }}"
+          STABLE_MAJOR="${{ steps.stable-version.outputs.major }}"
+
+          if [ -z "$STABLE_MAJOR" ]; then
+            echo "needs_pr=true" >> $GITHUB_OUTPUT
+            echo "reason=No stable branch exists yet" >> $GITHUB_OUTPUT
+          elif [ "$MASTER_MAJOR" != "$STABLE_MAJOR" ]; then
+            echo "needs_pr=true" >> $GITHUB_OUTPUT
+            echo "reason=Major version changed from $STABLE_MAJOR to $MASTER_MAJOR" >> $GITHUB_OUTPUT
+          else
+            echo "needs_pr=false" >> $GITHUB_OUTPUT
+            echo "reason=Major versions match" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Create Pull Request
+        if: steps.check-diff.outputs.needs_pr == 'true'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          BRANCH="update-stable-v${{ steps.master-version.outputs.major }}"
+          git push origin HEAD:"refs/heads/$BRANCH" --force
+
+          gh label create "stable-promotion" --color "0075ca" --description "Promotes to stable branch" 2>/dev/null || true
+          gh label create "major-version-bump" --color "e4e669" --description "Indicates a major version bump" 2>/dev/null || true
+
+          EXISTING=$(gh pr list --head "$BRANCH" --base stable --json number --jq 'length' 2>/dev/null || echo "0")
+          if [ "$EXISTING" = "0" ]; then
+            cat > /tmp/pr-body.md << EOF
+          ## Stable Branch Promotion
+
+          This PR promotes the master branch to stable for a major version update.
+
+          **Current stable version:** ${{ steps.stable-version.outputs.version || 'None' }} (major: ${{ steps.stable-version.outputs.major || 'N/A' }})
+          **New master version:** ${{ steps.master-version.outputs.version }} (major: ${{ steps.master-version.outputs.major }})
+
+          ### Testing Checklist
+
+          - [ ] All automated tests pass
+          - [ ] Structure tests pass
+          - [ ] Standalone tests pass
+          - [ ] Integration tests pass
+          - [ ] Manual testing completed (if required)
+          - [ ] Documentation reviewed and updated
+
+          ### Changes
+
+          - Major version bump from busybox-extras ${{ steps.stable-version.outputs.major || 'initial' }} to ${{ steps.master-version.outputs.major }}
+
+          ---
+          Generated automatically by check-major-version-bump workflow
+          EOF
+
+            gh pr create \
+              --base stable \
+              --head "$BRANCH" \
+              --title "Promote busybox-extras ${{ steps.master-version.outputs.version }} to stable" \
+              --label "stable-promotion" \
+              --label "major-version-bump" \
+              --body-file /tmp/pr-body.md
+          else
+            echo "PR already exists for branch $BRANCH, skipping creation"
+          fi
