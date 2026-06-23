@@ -57,20 +57,6 @@
       "reviewers": ["r0ps3c"]
     }
   ],
-  "customManagers": [
-    {
-      "customType": "regex",
-      "description": "Track busybox-extras APK version in Dockerfile, keyed to the actual Alpine version in use",
-      "fileMatch": ["^Dockerfile$"],
-      "matchStrings": [
-        "FROM alpine:(?<alpineMajor>[0-9]+)\\.(?<alpineMinor>[0-9]+)[\\s\\S]*?apk[^\\n]*busybox-extras=(?<currentValue>[0-9][0-9.]*)-r[0-9]+"
-      ],
-      "datasourceTemplate": "repology",
-      "depNameTemplate": "busybox-extras",
-      "versioningTemplate": "loose",
-      "lookupNameTemplate": "alpine_{{alpineMajor}}_{{alpineMinor}}/busybox"
-    }
-  ],
   "vulnerabilityAlerts": {
     "enabled": true
   },
