@@ -15,7 +15,7 @@ on:
 
 jobs:
   build-scan-push:
-    uses: r0ps3c/gh-shared-workflows/.github/workflows/docker-build-scan-push.yml@35467d2ac94a5c5dd6012133f1fca46a0b5fdad1 # main
+    uses: r0ps3c/gh-shared-workflows/.github/workflows/docker-build-scan-push.yml@682b970b31f7120638a432f191e31f3eb87243c3 # main
     with:
       image-ref: alpine-udhcpd:main
       version-extract-command: "apk info busybox-extras 2>/dev/null | grep '^busybox-extras-[0-9]' | head -1 | sed 's/^busybox-extras-//' | sed 's/ .*//' | sed 's/-r[0-9]*$//'"
